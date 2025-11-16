@@ -1,0 +1,16 @@
+# Next.js build
+frontend/.next/
+frontend/node_modules/
+
+# Docker data
+data/db/
+data/wp/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# System files
+.DS_Store
+.vscode/

@@ -1,0 +1,70 @@
+version: "3.9"
+services:
+  db:
+    image: mariadb:10.11
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    command: ["mysqld", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - ./data/db:/var/lib/mysql
+    restart: unless-stopped
+    networks: [appnet]
+
+  wordpress:
+    image: wordpress:6.5-php8.2-apache
+    depends_on: [db]
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: ${MYSQL_USER}
+      WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD}
+      WORDPRESS_DB_NAME: ${MYSQL_DATABASE}
+      WORDPRESS_TABLE_PREFIX: ${WORDPRESS_TABLE_PREFIX}
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET}
+    volumes:
+      - ./data/wp:/var/www/html
+    restart: unless-stopped
+    networks: [appnet]
+
+  next:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      WP_API_BASE_SERVER: ${WP_API_BASE_SERVER}
+      WP_API_BASE_PUBLIC: ${WP_API_BASE_PUBLIC}
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+      NODE_ENV: ${NODE_ENV}
+    volumes:
+      - ./frontend:/app # ソースコードはホストと共有
+      - /app/node_modules # node_modules はコンテナ専用（匿名ボリューム）
+    command: ["npm", "run", "dev"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://0.0.0.0:3000/health >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks: [appnet]
+
+  nginx:
+    image: nginx:1.25-alpine
+    depends_on:
+      next:
+        condition: service_healthy
+      wordpress:
+        condition: service_started
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    restart: unless-stopped
+    networks: [appnet]
+
+networks:
+  appnet:
+    driver: bridge
